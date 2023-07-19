@@ -6,34 +6,34 @@ import bootstrap5Plugin from "@fullcalendar/bootstrap5";
 
 import moment from "moment";
 
-import { INITIAL_EVENTS } from "../../utils/events";
-import { DatesSetArg } from "@fullcalendar/core/index.js";
+import { DatesSetArg, EventSourceInput } from "@fullcalendar/core/index.js";
 
 import "bootstrap/dist/css/bootstrap.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
 
-import { LegacyRef, useMemo, useRef, useState } from "react";
+import { LegacyRef, useEffect, useMemo, useRef, useState } from "react";
 
-import Modal from "react-bootstrap/Modal";
-import Select from "react-select";
 import {
-  CALENDAR_MONTH_LIST,
-  CALENDAR_YEAR_LIST,
-  COUNTRY_LIST,
-  CountryListItem,
+  FULLCALENDAR_TIME_NAME_MAPPING,
+  GC_COUNTRY_CALENDAR_MAP,
 } from "../../utils/countryAndCalendarData";
 
-const COUNTRY_LIST_FOR_REACT_SELECT = COUNTRY_LIST.map((countryObj) => {
-  return {
-    value: countryObj,
-    label: `${countryObj.Name} (${countryObj.Code})`,
-  };
-});
-
-const FULLCALENDAR_TIME_NAME_MAPPING = {
-  month: "dayGridMonth",
-  year: "multiMonthYear",
-};
+import "./Calendar.scss";
+import {
+  CountryListItem,
+  DATE_NAGER_CALENDAR_EVENT,
+  GC_API_RESPONSE,
+  GOOGLE_CALENDAR_EVENT,
+  LocationApiResponse,
+} from "./types";
+import {
+  fetchDNHolidayForYearData,
+  fetchGCHolidayData,
+  fetchLocationData,
+} from "./apiCalls";
+import { useQuery } from "@tanstack/react-query";
+import DateModal from "../Modals/DateModal";
+import CountryModal from "../Modals/CountryModal";
 
 const Calendar = () => {
   const calendarRef = useRef<FullCalendar>();
@@ -41,9 +41,13 @@ const Calendar = () => {
   const [currTitle, setCurrTitle] = useState<string>("");
   const [currViewType, setCurrViewType] = useState<string>("");
   const [currCountry, setCurrCountry] = useState<CountryListItem>({
-    Name: "India",
-    Code: "in",
+    Name: "Belgium",
+    Code: "be",
   });
+  const [currLatLon, setCurrLatLon] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
 
   const [currYear, setCurrYear] = useState<number>(2023);
   const [currMonth, setCurrMonth] = useState<string | null>("January");
@@ -52,14 +56,92 @@ const Calendar = () => {
   const [showDateChangeModal, setShowDateChangeModal] =
     useState<boolean>(false);
 
+  const [GCHolidayEventsForCountry, setGCHolidayEventsForCountry] = useState<
+    GOOGLE_CALENDAR_EVENT[]
+  >([]);
+
+  const [DNHolidayEventsForCountry, setDNHolidayEventsForCountry] = useState<
+    DATE_NAGER_CALENDAR_EVENT[]
+  >([]);
+
   const handleCloseCountryModal = () => setShowCountryModal(false);
 
   const handleCloseDateChangeModal = () => setShowDateChangeModal(false);
 
+  // Queries
+  useQuery(
+    ["fetchLocationData", currLatLon],
+    () => {
+      if (currLatLon) return fetchLocationData(currLatLon);
+    },
+    {
+      enabled: Boolean(currLatLon),
+      onSuccess: (data) => {
+        if (
+          data &&
+          (data?.data as LocationApiResponse)?.address?.country &&
+          (data?.data as LocationApiResponse)?.address?.country_code
+        ) {
+          setCurrCountry({
+            Name: (data.data as LocationApiResponse).address.country,
+            Code: (data.data as LocationApiResponse).address.country_code,
+          });
+        }
+      },
+      onError: (err) => {
+        console.error(err);
+      },
+    }
+  );
+
+  useQuery(
+    ["fetchGCHolidayData", currCountry?.Name],
+    () => {
+      return fetchGCHolidayData({
+        calendarId: GC_COUNTRY_CALENDAR_MAP[currCountry.Name],
+      });
+    },
+    {
+      enabled:
+        Boolean(currCountry?.Name) &&
+        Boolean(GC_COUNTRY_CALENDAR_MAP[currCountry.Name]),
+      onSuccess: (data) => {
+        if (data && (data?.data as GC_API_RESPONSE)?.items?.length) {
+          setGCHolidayEventsForCountry((data.data as GC_API_RESPONSE).items);
+        }
+      },
+      onError: (err) => {
+        console.error(err);
+      },
+    }
+  );
+
+  useQuery(
+    ["fetchDNHolidayForYearData", currCountry?.Code, currYear],
+    () => {
+      return fetchDNHolidayForYearData({
+        year: currYear,
+        country: currCountry?.Code,
+      });
+    },
+    {
+      enabled: Boolean(currCountry?.Code) && Boolean(currYear),
+      onSuccess: (data) => {
+        if (data && (data?.data as DATE_NAGER_CALENDAR_EVENT[])?.length) {
+          setDNHolidayEventsForCountry(
+            data.data as DATE_NAGER_CALENDAR_EVENT[]
+          );
+        }
+      },
+      onError: (err) => {
+        console.error(err);
+      },
+    }
+  );
+
   const onChangeYear = (year: number) => {
     if (calendarApi) {
       const currDate = calendarApi.getDate();
-      console.log(currDate);
       calendarApi.gotoDate(
         new Date(moment(currDate).year(year).format("MM-DD-YYYY"))
       );
@@ -76,7 +158,6 @@ const Calendar = () => {
   };
 
   const onViewUpdate = (dateInfo: DatesSetArg) => {
-    console.log("View changed! : ", dateInfo);
     if (dateInfo?.view?.title && dateInfo.view.title !== currTitle) {
       setCurrTitle(dateInfo.view.title);
       const parts = dateInfo.view.title.split(" ");
@@ -87,7 +168,6 @@ const Calendar = () => {
           : null;
       if (newYear !== currYear) {
         setCurrYear(newYear);
-        console.log("New year!! : ", newYear);
       }
       if (currMonth !== newMonth) {
         setCurrMonth(newMonth);
@@ -95,7 +175,6 @@ const Calendar = () => {
     }
     if (dateInfo?.view?.type && dateInfo.view.type !== currViewType) {
       setCurrViewType(dateInfo.view.type);
-      console.log("New type! : ", dateInfo.view.type);
     }
   };
 
@@ -103,107 +182,53 @@ const Calendar = () => {
     if (calendarRef?.current) {
       return calendarRef.current.getApi();
     } else return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calendarRef?.current]);
 
-  const renderCountryModal = () => {
-    return (
-      <Modal centered show={showCountryModal} onHide={handleCloseCountryModal}>
-        <Modal.Header closeButton>
-          <Modal.Title>Select your country</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Select
-            className="basic-single-select"
-            classNamePrefix="country-select"
-            defaultValue={{
-              label: `${currCountry.Name} (${currCountry.Code})`,
-              value: currCountry,
-            }}
-            onChange={(newVal) => {
-              if (newVal) {
-                console.log(newVal);
-                setCurrCountry(newVal.value);
-                handleCloseCountryModal();
-              }
-            }}
-            isSearchable={true}
-            name="Country"
-            options={COUNTRY_LIST_FOR_REACT_SELECT}
-          />
-        </Modal.Body>
-      </Modal>
-    );
-  };
+  const events: EventSourceInput = useMemo(() => {
+    const eventsArr: EventSourceInput = [];
+    if (GCHolidayEventsForCountry.length) {
+      GCHolidayEventsForCountry.forEach((GCEvent) => {
+        eventsArr.push({
+          id: GCEvent.id,
+          title: GCEvent.summary,
+          start: GCEvent.start.date,
+          end: GCEvent.end.date,
+        });
+      });
+    }
+    if (DNHolidayEventsForCountry.length) {
+      DNHolidayEventsForCountry.forEach((DNEvent) => {
+        eventsArr.push({
+          id: `${DNEvent.date}-${DNEvent.countryCode}-${DNEvent.localName}`,
+          title: `${DNEvent.name} (${DNEvent.localName})`,
+          start: new Date(DNEvent.date).toISOString().replace(/T.*$/, ""),
+        });
+      });
+    }
+    return eventsArr;
+  }, [GCHolidayEventsForCountry, DNHolidayEventsForCountry]);
 
-  const renderDateModal = () => {
-    return (
-      <Modal
-        centered
-        show={showDateChangeModal}
-        onHide={handleCloseDateChangeModal}
-      >
-        <Modal.Header closeButton>
-          <Modal.Title>
-            Select{" "}
-            {currViewType === FULLCALENDAR_TIME_NAME_MAPPING["month"]
-              ? "month and year"
-              : "year"}
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <div className="date-change-modal-form">
-            {currViewType === FULLCALENDAR_TIME_NAME_MAPPING["month"] ? (
-              <Select
-                className="basic-single-select month-select"
-                classNamePrefix="date-month-select"
-                placeholder="Select month"
-                defaultValue={{
-                  label: `${currMonth}`,
-                  value: currMonth,
-                }}
-                onChange={(newVal) => {
-                  if (newVal) {
-                    console.log(newVal);
-                    onChangeMonth(newVal.value as string);
-                  }
-                }}
-                isSearchable={true}
-                name="Date Month"
-                options={CALENDAR_MONTH_LIST}
-              />
-            ) : (
-              ""
-            )}
-            <Select
-              className="basic-single-select"
-              classNamePrefix="date-year-select"
-              placeholder="Select year"
-              defaultValue={{
-                label: `${currYear}`,
-                value: currYear,
-              }}
-              onChange={(newVal) => {
-                if (newVal) {
-                  console.log(newVal);
-                  onChangeYear(newVal.value);
-                }
-              }}
-              isSearchable={true}
-              name="Date Year"
-              options={CALENDAR_YEAR_LIST}
-            />
-          </div>
-        </Modal.Body>
-      </Modal>
-    );
-  };
+  useEffect(() => {
+    // ask for permission once the basic app is loaded
+    navigator.geolocation.getCurrentPosition((loc) => {
+      setCurrLatLon({ lat: loc.coords.latitude, lon: loc.coords.longitude });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (currCountry.Name) {
+      // reset if country change
+      setGCHolidayEventsForCountry([]);
+      setDNHolidayEventsForCountry([]);
+    }
+  }, [currCountry.Name]);
 
   return (
     <div className="calendar-container">
       <div
         className="calendar-main"
         onWheel={(event) => {
-          console.log("Scrolled! : ", event);
           if (currViewType === FULLCALENDAR_TIME_NAME_MAPPING["month"]) {
             if (event.deltaY > 0) {
               calendarApi?.next();
@@ -224,13 +249,13 @@ const Calendar = () => {
           customButtons={{
             customTitleBtn: {
               text: currTitle,
-              click: (_event) => {
+              click: () => {
                 setShowDateChangeModal(true);
               },
             },
             customCountryBtn: {
               text: currCountry.Name,
-              click: (_event) => {
+              click: () => {
                 setShowCountryModal(true);
               },
             },
@@ -248,12 +273,25 @@ const Calendar = () => {
           selectMirror={true}
           dayMaxEvents={true}
           weekends={true}
-          initialEvents={INITIAL_EVENTS} // alternatively, use the `events` setting to fetch from a feed
+          events={events} // alternatively, use the `events` setting to fetch from a feed
           datesSet={onViewUpdate}
         />
       </div>
-      {renderCountryModal()}
-      {renderDateModal()}
+      <CountryModal
+        showCountryModal={showCountryModal}
+        handleCloseCountryModal={handleCloseCountryModal}
+        currCountry={currCountry}
+        setCurrCountry={setCurrCountry}
+      />
+      <DateModal
+        showDateChangeModal={showDateChangeModal}
+        handleCloseDateChangeModal={handleCloseDateChangeModal}
+        currViewType={currViewType}
+        currMonth={currMonth}
+        currYear={currYear}
+        onChangeMonth={onChangeMonth}
+        onChangeYear={onChangeYear}
+      />
     </div>
   );
 };
