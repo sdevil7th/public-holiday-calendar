@@ -83,3 +83,11 @@ b {
 .month-select {
   margin-right: 1.5em;
 }
+
+$breakpoint: 820px;
+
+@media (max-width: $breakpoint) {
+  .calendar-main {
+    padding: 0.5em;
+  }
+}

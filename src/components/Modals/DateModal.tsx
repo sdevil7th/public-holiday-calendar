@@ -1,5 +1,7 @@
-import { Modal } from "react-bootstrap";
+import { FC } from "react";
 import Select from "react-select";
+import { Modal } from "react-bootstrap";
+
 import {
   CALENDAR_MONTH_LIST,
   CALENDAR_YEAR_LIST,
@@ -16,7 +18,7 @@ interface DateModalProps {
   onChangeYear: (year: number) => void;
 }
 
-const DateModal = (props: DateModalProps) => {
+const DateModal: FC<DateModalProps> = (props) => {
   const {
     showDateChangeModal,
     handleCloseDateChangeModal,

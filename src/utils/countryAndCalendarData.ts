@@ -492,11 +492,24 @@ export const COUNTRY_LIST: CountryListItem[] = [
   { Code: "ZW", Name: "Zimbabwe" },
 ];
 
-const rangeOfNumbers = (start = 0, end = 2, step = 1) => {
-  const len = Math.floor((end - start) / step) + 1;
+export const rangeOfNumbers = (
+  start: number,
+  end: number,
+  step = 1
+): number[] => {
+  start = Number(start);
+  end = Number(end);
+  if (!start) {
+    return [];
+  } else if (!end) {
+    return [start];
+  }
+  const diff = start < end ? end - start : start - end;
+  const smallerNum = start > end ? end : start;
+  const len = Math.floor(diff / step) + 1;
   return Array(len)
     .fill(undefined)
-    .map((_, idx) => start + idx * step);
+    .map((_, idx) => smallerNum + idx * step);
 };
 
 export const CALENDAR_YEAR_LIST = rangeOfNumbers(1970, 2050).map((year) => ({
@@ -504,7 +517,7 @@ export const CALENDAR_YEAR_LIST = rangeOfNumbers(1970, 2050).map((year) => ({
   label: String(year),
 }));
 
-export const CALENDAR_MONTH_LIST = [
+export const MONTHS_ARRAY = [
   "January",
   "February",
   "March",
@@ -517,7 +530,12 @@ export const CALENDAR_MONTH_LIST = [
   "October",
   "Novermber",
   "December",
-].map((month) => ({ value: month, label: month }));
+];
+
+export const CALENDAR_MONTH_LIST = MONTHS_ARRAY.map((month) => ({
+  value: month,
+  label: month,
+}));
 
 export const FULLCALENDAR_TIME_NAME_MAPPING = {
   month: "dayGridMonth",

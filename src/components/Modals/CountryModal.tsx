@@ -1,6 +1,9 @@
-import { Modal } from "react-bootstrap";
+import { FC } from "react";
 import Select from "react-select";
+import { Modal } from "react-bootstrap";
+
 import { COUNTRY_LIST } from "../../utils/countryAndCalendarData";
+
 import { CountryListItem } from "../Calendar/types";
 
 interface CountryModalProps {
@@ -17,13 +20,14 @@ const COUNTRY_LIST_FOR_REACT_SELECT = COUNTRY_LIST.map((countryObj) => {
   };
 });
 
-const CountryModal = (props: CountryModalProps) => {
+const CountryModal: FC<CountryModalProps> = (props) => {
   const {
     showCountryModal,
     handleCloseCountryModal,
     currCountry,
     setCurrCountry,
   } = props;
+
   return (
     <Modal centered show={showCountryModal} onHide={handleCloseCountryModal}>
       <Modal.Header closeButton>

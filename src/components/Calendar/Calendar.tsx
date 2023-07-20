@@ -1,24 +1,40 @@
+import {
+  FC,
+  LegacyRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useQuery } from "@tanstack/react-query";
+import moment from "moment";
+
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import multiMonthPlugin from "@fullcalendar/multimonth";
 import interactionPlugin from "@fullcalendar/interaction";
 import bootstrap5Plugin from "@fullcalendar/bootstrap5";
 
-import moment from "moment";
+import DateModal from "../Modals/DateModal";
+import CountryModal from "../Modals/CountryModal";
 
-import { DatesSetArg, EventSourceInput } from "@fullcalendar/core/index.js";
-
-import "bootstrap/dist/css/bootstrap.css";
-import "bootstrap-icons/font/bootstrap-icons.css";
-
-import { LegacyRef, useEffect, useMemo, useRef, useState } from "react";
+import {
+  fetchDNHolidayForYearData,
+  fetchGCHolidayData,
+  fetchLocationData,
+} from "./apiCalls";
 
 import {
   FULLCALENDAR_TIME_NAME_MAPPING,
   GC_COUNTRY_CALENDAR_MAP,
 } from "../../utils/countryAndCalendarData";
 
-import "./Calendar.scss";
+import {
+  DatesSetArg,
+  EventSourceInput,
+  ToolbarInput,
+} from "@fullcalendar/core/index.js";
 import {
   CountryListItem,
   DATE_NAGER_CALENDAR_EVENT,
@@ -26,17 +42,17 @@ import {
   GOOGLE_CALENDAR_EVENT,
   LocationApiResponse,
 } from "./types";
-import {
-  fetchDNHolidayForYearData,
-  fetchGCHolidayData,
-  fetchLocationData,
-} from "./apiCalls";
-import { useQuery } from "@tanstack/react-query";
-import DateModal from "../Modals/DateModal";
-import CountryModal from "../Modals/CountryModal";
 
-const Calendar = () => {
+import "bootstrap/dist/css/bootstrap.css";
+import "bootstrap-icons/font/bootstrap-icons.css";
+import "./Calendar.scss";
+
+const SCREEN_WIDTH_THRESHOLD = 820;
+
+const Calendar: FC = () => {
   const calendarRef = useRef<FullCalendar>();
+
+  const [windowWidth, setWindowWidth] = useState<number>(window.innerWidth);
 
   const [currTitle, setCurrTitle] = useState<string>("");
   const [currViewType, setCurrViewType] = useState<string>("");
@@ -64,9 +80,15 @@ const Calendar = () => {
     DATE_NAGER_CALENDAR_EVENT[]
   >([]);
 
-  const handleCloseCountryModal = () => setShowCountryModal(false);
+  const handleCloseCountryModal = useCallback(
+    () => setShowCountryModal(false),
+    []
+  );
 
-  const handleCloseDateChangeModal = () => setShowDateChangeModal(false);
+  const handleCloseDateChangeModal = useCallback(
+    () => setShowDateChangeModal(false),
+    []
+  );
 
   // Queries
   useQuery(
@@ -103,6 +125,7 @@ const Calendar = () => {
     },
     {
       enabled:
+        import.meta.env.VITE_GOOGLE_CALENDAR_KEY &&
         Boolean(currCountry?.Name) &&
         Boolean(GC_COUNTRY_CALENDAR_MAP[currCountry.Name]),
       onSuccess: (data) => {
@@ -139,23 +162,36 @@ const Calendar = () => {
     }
   );
 
-  const onChangeYear = (year: number) => {
-    if (calendarApi) {
-      const currDate = calendarApi.getDate();
-      calendarApi.gotoDate(
-        new Date(moment(currDate).year(year).format("MM-DD-YYYY"))
-      );
-    }
-  };
+  const calendarApi = useMemo(() => {
+    if (calendarRef?.current) {
+      return calendarRef.current.getApi();
+    } else return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calendarRef?.current]);
 
-  const onChangeMonth = (month: string) => {
-    if (calendarApi) {
-      const currDate = calendarApi.getDate();
-      calendarApi.gotoDate(
-        new Date(moment(currDate).month(month).format("MM-DD-YYYY"))
-      );
-    }
-  };
+  const onChangeYear = useCallback(
+    (year: number) => {
+      if (calendarApi) {
+        const currDate = calendarApi.getDate();
+        calendarApi.gotoDate(
+          new Date(moment(currDate).year(year).format("MM-DD-YYYY"))
+        );
+      }
+    },
+    [calendarApi]
+  );
+
+  const onChangeMonth = useCallback(
+    (month: string) => {
+      if (calendarApi) {
+        const currDate = calendarApi.getDate();
+        calendarApi.gotoDate(
+          new Date(moment(currDate).month(month).format("MM-DD-YYYY"))
+        );
+      }
+    },
+    [calendarApi]
+  );
 
   const onViewUpdate = (dateInfo: DatesSetArg) => {
     if (dateInfo?.view?.title && dateInfo.view.title !== currTitle) {
@@ -178,12 +214,21 @@ const Calendar = () => {
     }
   };
 
-  const calendarApi = useMemo(() => {
-    if (calendarRef?.current) {
-      return calendarRef.current.getApi();
-    } else return null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarRef?.current]);
+  const onWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      if (
+        currViewType === FULLCALENDAR_TIME_NAME_MAPPING["month"] &&
+        calendarApi
+      ) {
+        if (event.deltaY > 0) {
+          calendarApi.next();
+        } else if (event.deltaY < 0) {
+          calendarApi.prev();
+        }
+      }
+    },
+    [currViewType, calendarApi]
+  );
 
   const events: EventSourceInput = useMemo(() => {
     const eventsArr: EventSourceInput = [];
@@ -211,9 +256,16 @@ const Calendar = () => {
 
   useEffect(() => {
     // ask for permission once the basic app is loaded
-    navigator.geolocation.getCurrentPosition((loc) => {
-      setCurrLatLon({ lat: loc.coords.latitude, lon: loc.coords.longitude });
-    });
+    if (navigator && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((loc) => {
+        if (loc && loc.coords?.latitude && loc.coords?.longitude) {
+          setCurrLatLon({
+            lat: loc.coords.latitude,
+            lon: loc.coords.longitude,
+          });
+        }
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -224,20 +276,45 @@ const Calendar = () => {
     }
   }, [currCountry.Name]);
 
+  useEffect(() => {
+    const updateDimension = () => {
+      setWindowWidth(window.innerWidth);
+    };
+    window.addEventListener("resize", updateDimension);
+
+    return () => {
+      window.removeEventListener("resize", updateDimension);
+    };
+  }, []);
+
+  const headerToolbarOptions: false | ToolbarInput = useMemo(() => {
+    if (windowWidth < SCREEN_WIDTH_THRESHOLD) {
+      return {
+        left: "customTitleBtn",
+        right: `${FULLCALENDAR_TIME_NAME_MAPPING["month"]},${FULLCALENDAR_TIME_NAME_MAPPING["year"]}`,
+      };
+    } else {
+      return {
+        left: "prev,next today",
+        center: "customCountryBtn customTitleBtn",
+        right: `${FULLCALENDAR_TIME_NAME_MAPPING["month"]},${FULLCALENDAR_TIME_NAME_MAPPING["year"]}`,
+      };
+    }
+  }, [windowWidth]);
+
+  const footerToolbarOptions: false | ToolbarInput = useMemo(() => {
+    if (windowWidth < SCREEN_WIDTH_THRESHOLD) {
+      return {
+        left: "customCountryBtn",
+        right: "prev,next today",
+      };
+    }
+    return false;
+  }, [windowWidth]);
+
   return (
     <div className="calendar-container">
-      <div
-        className="calendar-main"
-        onWheel={(event) => {
-          if (currViewType === FULLCALENDAR_TIME_NAME_MAPPING["month"]) {
-            if (event.deltaY > 0) {
-              calendarApi?.next();
-            } else if (event.deltaY < 0) {
-              calendarApi?.prev();
-            }
-          }
-        }}
-      >
+      <div className="calendar-main" onWheel={onWheel}>
         <FullCalendar
           ref={calendarRef as LegacyRef<FullCalendar>}
           plugins={[
@@ -248,12 +325,14 @@ const Calendar = () => {
           ]}
           customButtons={{
             customTitleBtn: {
+              hint: "Calendar title btn",
               text: currTitle,
               click: () => {
                 setShowDateChangeModal(true);
               },
             },
             customCountryBtn: {
+              hint: "Country select btn",
               text: currCountry.Name,
               click: () => {
                 setShowCountryModal(true);
@@ -261,11 +340,8 @@ const Calendar = () => {
             },
           }}
           // adding comma means inline, space means separate, pretty neat, huh!
-          headerToolbar={{
-            left: "prev,next today",
-            center: "customCountryBtn customTitleBtn",
-            right: `${FULLCALENDAR_TIME_NAME_MAPPING["month"]},${FULLCALENDAR_TIME_NAME_MAPPING["year"]}`,
-          }}
+          headerToolbar={headerToolbarOptions}
+          footerToolbar={footerToolbarOptions}
           themeSystem="bootstrap5"
           initialView={FULLCALENDAR_TIME_NAME_MAPPING["month"]}
           editable={true}
