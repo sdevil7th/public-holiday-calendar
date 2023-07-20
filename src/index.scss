@@ -55,6 +55,28 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
+/* Scroll bar stylings */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+  background: rgb(229, 229, 229);
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+  background: #b4b4b4;
+  border-radius: 5px;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #454545;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
